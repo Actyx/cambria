@@ -1,0 +1,13 @@
+package spec
+
+sourcedir = "spec"
+
+depends = base
+
+modules =
+    Lens,
+    Lens.Reversible,
+    Lens.Uninhabited,
+    Lens.Util,
+    Lens.Valid,
+    Map
