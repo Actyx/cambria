@@ -4,8 +4,10 @@ use rkyv::ser::serializers::AllocSerializer;
 use rkyv::ser::Serializer;
 
 mod schema;
+mod schema2;
 
-use schema::Doc;
+use schema::{ArchivedDoc, Doc};
+use schema2::ArchivedDoc2;
 
 fn main() {
     let mut doc = Doc::default();
@@ -18,7 +20,8 @@ fn main() {
     let mut ser = AllocSerializer::<256>::default();
     ser.serialize_value(&doc).unwrap();
     let bytes = ser.into_serializer().into_inner().to_vec();
-    let ptr = unsafe { archived_root::<Doc>(&bytes[..]) }.ptr();
+    let doc = unsafe { archived_root::<Doc>(&bytes[..]) };
+    let ptr = doc.ptr();
 
     assert_eq!(
         ptr.keys().unwrap().collect::<Vec<_>>(),
@@ -37,5 +40,7 @@ fn main() {
     let eggs = shopping.idx(1).unwrap();
     assert_eq!(eggs.string().unwrap(), "eggs");
 
+    let doc2 = ArchivedDoc2::transform(ArchivedDoc::lenses(), &bytes);
     println!("{:?}", doc);
+    println!("{:?}", doc2);
 }

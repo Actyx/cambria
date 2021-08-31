@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
+use rkyv::ser::serializers::AllocSerializer;
+use rkyv::ser::Serializer;
 use rkyv::string::ArchivedString;
 use rkyv::{Archive, Deserialize, Infallible, Serialize};
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 pub type Prop = String;
 
@@ -107,18 +108,6 @@ impl Schema {
             }
             _ => false,
         }
-    }
-}
-
-impl TryFrom<&ArchivedLenses> for Schema {
-    type Error = anyhow::Error;
-
-    fn try_from(lenses: &ArchivedLenses) -> Result<Self> {
-        let mut schema = Schema::Null;
-        for lens in lenses.0.as_ref() {
-            lens.to_ref().transform_schema(&mut schema)?;
-        }
-        Ok(schema)
     }
 }
 
@@ -443,21 +432,34 @@ impl Lenses {
     }
 }
 
-pub fn transform<'a>(a: &'a [ArchivedLens], b: &'a [ArchivedLens]) -> Vec<LensRef<'a>> {
-    let mut prefix = 0;
-    for (a, b) in a.iter().zip(b) {
-        if a == b {
-            prefix += 1;
-        } else {
-            break;
+impl ArchivedLenses {
+    pub fn to_schema(&self) -> Result<Vec<u8>> {
+        let mut schema = Schema::Null;
+        for lens in self.0.as_ref() {
+            lens.to_ref().transform_schema(&mut schema)?;
         }
+        let mut ser = AllocSerializer::<256>::default();
+        ser.serialize_value(&schema).unwrap();
+        let bytes = ser.into_serializer().into_inner().to_vec();
+        Ok(bytes)
     }
-    let mut c = Vec::with_capacity(a.len() + b.len() - 2 * prefix);
-    for a in a[prefix..].iter().rev() {
-        c.push(a.to_ref().reverse());
+
+    pub fn transform<'a>(&'a self, b: &'a ArchivedLenses) -> Vec<LensRef<'a>> {
+        let mut prefix = 0;
+        for (a, b) in self.0.iter().zip(b.0.iter()) {
+            if a == b {
+                prefix += 1;
+            } else {
+                break;
+            }
+        }
+        let mut c = Vec::with_capacity(self.0.len() + b.0.len() - 2 * prefix);
+        for a in self.0[prefix..].iter().rev() {
+            c.push(a.to_ref().reverse());
+        }
+        for b in b.0[prefix..].iter() {
+            c.push(b.to_ref());
+        }
+        c
     }
-    for b in b[prefix..].iter() {
-        c.push(b.to_ref());
-    }
-    c
 }

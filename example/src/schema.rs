@@ -9,7 +9,7 @@
     rkyv :: Deserialize,
     rkyv :: Serialize,
 )]
-#[archive_attr(repr(C))]
+#[archive_attr(derive(Debug, Eq, Hash, PartialEq), repr(C))]
 pub struct Doc {
     #[with(cambria::Bool)]
     pub done: bool,
@@ -18,7 +18,7 @@ pub struct Doc {
     pub xanswer: i64,
 }
 impl cambria::Cambria for ArchivedDoc {
-    fn lenses(&self) -> &'static [u8] {
+    fn lenses() -> &'static [u8] {
         use cambria::aligned::{Aligned, A8};
         static LENSES: Aligned<A8, [u8; 292usize]> = Aligned([
             115u8, 104u8, 111u8, 112u8, 112u8, 105u8, 110u8, 103u8, 115u8, 104u8, 111u8, 112u8,
@@ -43,7 +43,7 @@ impl cambria::Cambria for ArchivedDoc {
         ]);
         &LENSES[..]
     }
-    fn schema(&self) -> &'static cambria::ArchivedSchema {
+    fn schema() -> &'static cambria::ArchivedSchema {
         use cambria::aligned::{Aligned, A8};
         static SCHEMA: Aligned<A8, [u8; 104usize]> = Aligned([
             115u8, 104u8, 111u8, 112u8, 112u8, 105u8, 110u8, 103u8, 3u8, 0u8, 0u8, 0u8, 0u8, 0u8,
@@ -55,13 +55,5 @@ impl cambria::Cambria for ArchivedDoc {
             0u8, 0u8, 0u8, 3u8, 0u8, 0u8, 0u8, 176u8, 255u8, 255u8, 255u8,
         ]);
         unsafe { rkyv::archived_root::<cambria::Schema>(&SCHEMA[..]) }
-    }
-    fn ptr<'a>(&'a self) -> cambria::Ptr<'a> {
-        cambria::Ptr::new(self as *const _ as *const u8, unsafe {
-            &*(self.schema() as *const _)
-        })
-    }
-    fn transform(lenses: &[u8], bytes: &[u8]) -> Self {
-        todo!()
     }
 }

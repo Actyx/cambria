@@ -17,6 +17,7 @@ use rkyv::{Archive, Archived, Deserialize, Fallible, RawRelPtr, Serialize};
     Deserialize,
     Serialize,
 )]
+#[archive(as = "Number")]
 #[repr(C)]
 pub struct Number([u8; 8]);
 
@@ -68,6 +69,7 @@ impl<D: Fallible + ?Sized> DeserializeWith<Archived<Number>, i64, D> for Number 
     Deserialize,
     Serialize,
 )]
+#[archive(as = "Bool")]
 #[repr(C)]
 pub struct Bool([u8; 8]);
 

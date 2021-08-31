@@ -5,7 +5,6 @@ use quote::{format_ident, quote};
 use rkyv::archived_root;
 use rkyv::ser::serializers::AllocSerializer;
 use rkyv::ser::Serializer;
-use std::convert::TryFrom;
 
 pub fn precompile(ident: &str, lenses: Lenses) -> TokenStream {
     let mut ser = AllocSerializer::<256>::default();
@@ -13,10 +12,7 @@ pub fn precompile(ident: &str, lenses: Lenses) -> TokenStream {
     let lenses = ser.into_serializer().into_inner().to_vec();
     let lenses_ref = unsafe { archived_root::<Lenses>(&lenses) };
 
-    let schema = Schema::try_from(lenses_ref).unwrap();
-    let mut ser = AllocSerializer::<256>::default();
-    ser.serialize_value(&schema).unwrap();
-    let schema = ser.into_serializer().into_inner().to_vec();
+    let schema = lenses_ref.to_schema().unwrap();
     let schema_ref = unsafe { archived_root::<Schema>(&schema) };
 
     let ident = ident.to_camel_case();
@@ -29,27 +25,16 @@ pub fn precompile(ident: &str, lenses: Lenses) -> TokenStream {
         #structs
 
         impl cambria::Cambria for #ident {
-            fn lenses(&self) -> &'static [u8] {
+            fn lenses() -> &'static [u8] {
                 use cambria::aligned::{Aligned, A8};
                 static LENSES: Aligned<A8, [u8; #lenses_len]> = Aligned([#(#lenses),*]);
                 &LENSES[..]
             }
 
-            fn schema(&self) -> &'static cambria::ArchivedSchema {
+            fn schema() -> &'static cambria::ArchivedSchema {
                 use cambria::aligned::{Aligned, A8};
                 static SCHEMA: Aligned<A8, [u8; #schema_len]> = Aligned([#(#schema),*]);
                 unsafe { rkyv::archived_root::<cambria::Schema>(&SCHEMA[..]) }
-            }
-
-            fn ptr<'a>(&'a self) -> cambria::Ptr<'a> {
-                cambria::Ptr::new(
-                    self as *const _ as *const u8,
-                    unsafe { &*(self.schema() as *const _) },
-                )
-            }
-
-            fn transform(lenses: &[u8], bytes: &[u8]) -> Self {
-                todo!()
             }
         }
     }
@@ -123,7 +108,7 @@ fn precompile_schema(key: &str, schema: &ArchivedSchema) -> PrecompiledSchema {
                 def: quote! {
                     #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
                     #[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)]
-                    #[archive_attr(repr(C))]
+                    #[archive_attr(derive(Debug, Eq, Hash, PartialEq), repr(C))]
                     pub struct #ty {
                         #(#imp)*
                     }
