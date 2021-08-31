@@ -1,22 +1,34 @@
 use anyhow::{anyhow, Result};
-use rkyv::{Archive, Serialize};
+use rkyv::string::ArchivedString;
+use rkyv::{Archive, Deserialize, Infallible, Serialize};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 pub type Prop = String;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Archive, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Archive, Serialize)]
 #[archive(as = "PrimitiveKind")]
-#[repr(C, align(8))]
+#[repr(C)]
 pub enum PrimitiveKind {
     Boolean,
     Number,
     Text,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Archive, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Archive, Serialize)]
+#[archive(as = "Kind")]
+#[repr(C)]
+pub enum Kind {
+    Null,
+    Primitive(PrimitiveKind),
+    Array,
+    Object,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Archive, Deserialize, Serialize)]
 #[archive_attr(derive(Debug, Eq, Hash, PartialEq))]
-#[repr(C, align(8))]
+#[archive(compare(PartialEq))]
+#[repr(C)]
 pub enum PrimitiveValue {
     Boolean(bool),
     Number(i64),
@@ -36,7 +48,7 @@ impl ArchivedPrimitiveValue {
 #[derive(Clone, Debug, Eq, PartialEq, Archive, Serialize)]
 #[archive_attr(derive(Debug, Eq, PartialEq))]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[repr(C, align(8))]
+#[repr(C)]
 pub enum Value {
     Null,
     Primitive(PrimitiveValue),
@@ -44,20 +56,10 @@ pub enum Value {
     Object(#[omit_bounds] BTreeMap<Prop, Value>),
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Archive, Serialize)]
-#[archive_attr(derive(Clone, Debug, Eq, Hash, PartialEq))]
-#[repr(C, align(8))]
-pub enum Kind {
-    Null,
-    Primitive(PrimitiveKind),
-    Array,
-    Object,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Archive, Serialize)]
 #[archive_attr(derive(Debug, Eq, PartialEq))]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[repr(C, align(8))]
+#[repr(C)]
 pub enum Schema {
     Null,
     Boolean,
@@ -114,7 +116,7 @@ impl TryFrom<&ArchivedLenses> for Schema {
     fn try_from(lenses: &ArchivedLenses) -> Result<Self> {
         let mut schema = Schema::Null;
         for lens in lenses.0.as_ref() {
-            lens.transform_schema(&mut schema)?;
+            lens.to_ref().transform_schema(&mut schema)?;
         }
         Ok(schema)
     }
@@ -123,7 +125,7 @@ impl TryFrom<&ArchivedLenses> for Schema {
 #[derive(Clone, Debug, Eq, PartialEq, Archive, Serialize)]
 #[archive_attr(derive(Debug, Eq, PartialEq))]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[repr(C, align(8))]
+#[repr(C)]
 pub enum Lens {
     Make(Kind),
     Destroy(Kind),
@@ -144,31 +146,72 @@ pub enum Lens {
 }
 
 impl ArchivedLens {
-    pub fn reverse(&mut self) {
-        /*match self {
-            Self::Make(kind) => *self = Self::Destroy(*kind),
-            Self::Destroy(kind) => *self = Self::Make(*kind),
-            Self::AddProperty(key) => *self = Self::RemoveProperty(*key),
-            Self::RemoveProperty(key) => *self = Self::AddProperty(*key),
-            Self::RenameProperty(from, to) => *self = Self::RenameProperty(*to, *from),
-            Self::HoistProperty(host, name) => *self = Self::PlungeProperty(*host, *name),
-            Self::PlungeProperty(host, name) => *self = Self::HoistProperty(*host, *name),
-            Self::Wrap => *self = Self::Head,
-            Self::Head => *self = Self::Wrap,
-            Self::LensIn(key, lens) => lens.reverse(),
-            Self::LensMap(lens) => lens.reverse(),
-            Self::Convert(from, to, map) => {
-                map.as_mut().iter_mut().map(|(k, v)| {
-                    let k2 = *k;
-                    *k = *v;
-                    *v = k2;
-                });
-            }
-        }*/
+    fn to_ref<'a>(&'a self) -> LensRef<'a> {
+        match self {
+            Self::Make(k) => LensRef::Make(*k),
+            Self::Destroy(k) => LensRef::Destroy(*k),
+            Self::AddProperty(p) => LensRef::AddProperty(p),
+            Self::RemoveProperty(p) => LensRef::RemoveProperty(p),
+            Self::RenameProperty(p1, p2) => LensRef::RenameProperty(p1, p2),
+            Self::HoistProperty(h, t) => LensRef::HoistProperty(h, t),
+            Self::PlungeProperty(h, t) => LensRef::PlungeProperty(h, t),
+            Self::Wrap => LensRef::Wrap,
+            Self::Head => LensRef::Head,
+            Self::LensIn(k, l) => LensRef::LensIn(false, k, l),
+            Self::LensMap(l) => LensRef::LensMap(false, l),
+            Self::Convert(k1, k2, m) => LensRef::Convert(false, *k1, *k2, m.as_ref()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LensRef<'a> {
+    Make(Kind),
+    Destroy(Kind),
+    AddProperty(&'a ArchivedString),
+    RemoveProperty(&'a ArchivedString),
+    RenameProperty(&'a ArchivedString, &'a ArchivedString),
+    HoistProperty(&'a ArchivedString, &'a ArchivedString),
+    PlungeProperty(&'a ArchivedString, &'a ArchivedString),
+    Wrap,
+    Head,
+    LensIn(bool, &'a ArchivedString, &'a ArchivedLens),
+    LensMap(bool, &'a ArchivedLens),
+    Convert(
+        bool,
+        PrimitiveKind,
+        PrimitiveKind,
+        &'a [(ArchivedPrimitiveValue, ArchivedPrimitiveValue)],
+    ),
+}
+
+impl<'a> LensRef<'a> {
+    pub fn reverse(self) -> Self {
+        match self {
+            Self::Make(kind) => Self::Destroy(kind),
+            Self::Destroy(kind) => Self::Make(kind),
+            Self::AddProperty(key) => Self::RemoveProperty(key),
+            Self::RemoveProperty(key) => Self::AddProperty(key),
+            Self::RenameProperty(from, to) => Self::RenameProperty(to, from),
+            Self::HoistProperty(host, target) => Self::PlungeProperty(host, target),
+            Self::PlungeProperty(host, target) => Self::HoistProperty(host, target),
+            Self::Wrap => Self::Head,
+            Self::Head => Self::Wrap,
+            Self::LensIn(rev, key, lens) => Self::LensIn(!rev, key, lens),
+            Self::LensMap(rev, lens) => Self::LensMap(!rev, lens),
+            Self::Convert(rev, from, to, map) => Self::Convert(!rev, from, to, map),
+        }
+    }
+
+    pub fn maybe_reverse(self, rev: bool) -> Self {
+        if rev {
+            self.reverse()
+        } else {
+            self
+        }
     }
 
     pub fn transform_schema(&self, s: &mut Schema) -> Result<()> {
-        type Kind = ArchivedKind;
         match (self, s) {
             (Self::Make(k), s) => {
                 if *s != Schema::Null {
@@ -269,16 +312,21 @@ impl ArchivedLens {
                     return Err(anyhow!("cannot apply head to {:?}", s));
                 }
             }
-            (Self::LensIn(key, lens), Schema::Object(m)) if m.contains_key(key.as_str()) => {
-                lens.transform_schema(m.get_mut(key.as_str()).unwrap())?;
+            (Self::LensIn(rev, key, lens), Schema::Object(m)) if m.contains_key(key.as_str()) => {
+                lens.to_ref()
+                    .maybe_reverse(*rev)
+                    .transform_schema(m.get_mut(key.as_str()).unwrap())?;
             }
-            (Self::LensMap(lens), Schema::Array(_, s)) => lens.transform_schema(s)?,
-            (Self::Convert(a, b, m), s) => {
+            (Self::LensMap(rev, lens), Schema::Array(_, s)) => {
+                lens.to_ref().maybe_reverse(*rev).transform_schema(s)?
+            }
+            (Self::Convert(rev, a, b, m), s) => {
                 for (va, vb) in m.as_ref() {
                     if va.kind_of() != *a || vb.kind_of() != *b {
                         return Err(anyhow::anyhow!("invalid map"));
                     }
                 }
+                let (a, b) = if *rev { (b, a) } else { (a, b) };
                 match (a, &s) {
                     (PrimitiveKind::Boolean, Schema::Boolean) => {}
                     (PrimitiveKind::Number, Schema::Number) => {}
@@ -296,9 +344,9 @@ impl ArchivedLens {
         Ok(())
     }
 
-    /*pub fn transform_value(&self, v: &mut Value) {
+    pub fn transform_value(&self, v: &mut Value) {
         match (self, v) {
-            (Lens::Make(k), v) => {
+            (Self::Make(k), v) => {
                 *v = match k {
                     Kind::Null => Value::Null,
                     Kind::Primitive(PrimitiveKind::Boolean) => {
@@ -314,63 +362,64 @@ impl ArchivedLens {
                     Kind::Object => Value::Object(Default::default()),
                 };
             }
-            (Lens::Destroy(_), v) => {
+            (Self::Destroy(_), v) => {
                 *v = Value::Null;
             }
-            (Lens::AddProperty(key), Value::Object(m)) => {
-                m.insert(key.clone(), Value::Null);
+            (Self::AddProperty(key), Value::Object(m)) => {
+                m.insert(key.to_string(), Value::Null);
             }
-            (Lens::RemoveProperty(key), Value::Object(m)) => {
-                m.remove(key);
+            (Self::RemoveProperty(key), Value::Object(m)) => {
+                m.remove(key.as_str());
             }
-            (Lens::RenameProperty(from, to), Value::Object(m)) => {
-                if let Some(v) = m.remove(from) {
-                    m.insert(to.clone(), v);
+            (Self::RenameProperty(from, to), Value::Object(m)) => {
+                if let Some(v) = m.remove(from.as_str()) {
+                    m.insert(to.to_string(), v);
                 }
             }
-            (Lens::HoistProperty(host, target), Value::Object(m)) => {
-                if let Some(Value::Object(host)) = m.get_mut(host) {
-                    if let Some(v) = host.remove(target) {
-                        m.insert(target.clone(), v);
+            (Self::HoistProperty(host, target), Value::Object(m)) => {
+                if let Some(Value::Object(host)) = m.get_mut(host.as_str()) {
+                    if let Some(v) = host.remove(target.as_str()) {
+                        m.insert(target.to_string(), v);
                     }
                 }
             }
-            (Lens::PlungeProperty(host, target), Value::Object(m)) => {
-                if let Some(v) = m.remove(target) {
-                    if let Some(Value::Object(host)) = m.get_mut(host) {
-                        host.insert(target.clone(), v);
+            (Self::PlungeProperty(host, target), Value::Object(m)) => {
+                if let Some(v) = m.remove(target.as_str()) {
+                    if let Some(Value::Object(host)) = m.get_mut(host.as_str()) {
+                        host.insert(target.to_string(), v);
                     } else {
-                        m.insert(target.clone(), v);
+                        m.insert(target.to_string(), v);
                     }
                 }
             }
-            (Lens::Wrap, v) => {
+            (Self::Wrap, v) => {
                 *v = Value::Array(vec![v.clone()]);
             }
-            (Lens::Head, v) => {
+            (Self::Head, v) => {
                 if let Value::Array(vs) = &v {
                     if let Some(head) = vs.get(0) {
                         *v = head.clone();
                     }
                 }
             }
-            (Lens::LensIn(key, lens), Value::Object(m)) => {
-                if let Some(v) = m.get_mut(key) {
-                    lens.transform_value(v);
+            (Self::LensIn(rev, key, lens), Value::Object(m)) => {
+                if let Some(v) = m.get_mut(key.as_str()) {
+                    lens.to_ref().maybe_reverse(*rev).transform_value(v);
                 }
             }
-            (Lens::LensMap(lens), Value::Array(vs)) => {
+            (Self::LensMap(rev, lens), Value::Array(vs)) => {
                 for v in vs.iter_mut() {
-                    lens.transform_value(v);
+                    lens.to_ref().maybe_reverse(*rev).transform_value(v);
                 }
             }
-            (Lens::Convert(_, k, m), Value::Primitive(p)) => {
-                for (k, v) in m {
+            (Self::Convert(rev, a, b, m), Value::Primitive(p)) => {
+                for (k, v) in m.as_ref() {
                     if k == p {
-                        *p = v.clone();
+                        *p = v.deserialize(&mut Infallible).unwrap();
                         break;
                     }
                 }
+                let k = if *rev { b } else { a };
                 *p = match k {
                     PrimitiveKind::Boolean => PrimitiveValue::Boolean(false),
                     PrimitiveKind::Number => PrimitiveValue::Number(0),
@@ -379,13 +428,13 @@ impl ArchivedLens {
             }
             _ => {}
         }
-    }*/
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Archive, Serialize)]
 #[archive_attr(derive(Debug, Eq, PartialEq))]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[repr(C, align(8))]
+#[repr(C)]
 pub struct Lenses(Vec<Lens>);
 
 impl Lenses {
@@ -394,7 +443,7 @@ impl Lenses {
     }
 }
 
-pub fn transform<'a>(a: &'a mut [ArchivedLens], b: &'a [ArchivedLens]) -> Vec<&'a ArchivedLens> {
+pub fn transform<'a>(a: &'a [ArchivedLens], b: &'a [ArchivedLens]) -> Vec<LensRef<'a>> {
     let mut prefix = 0;
     for (a, b) in a.iter().zip(b) {
         if a == b {
@@ -404,12 +453,11 @@ pub fn transform<'a>(a: &'a mut [ArchivedLens], b: &'a [ArchivedLens]) -> Vec<&'
         }
     }
     let mut c = Vec::with_capacity(a.len() + b.len() - 2 * prefix);
-    for a in a[prefix..].iter_mut().rev() {
-        a.reverse();
-        c.push(&*a);
+    for a in a[prefix..].iter().rev() {
+        c.push(a.to_ref().reverse());
     }
     for b in b[prefix..].iter() {
-        c.push(b);
+        c.push(b.to_ref());
     }
     c
 }
