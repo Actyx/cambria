@@ -1,6 +1,7 @@
 use crate::lens::ArchivedSchema;
 use rkyv::string::ArchivedString;
-use rkyv::{Archive, Deserialize, RawRelPtr, Serialize};
+use rkyv::with::{ArchiveWith, DeserializeWith, SerializeWith};
+use rkyv::{Archive, Archived, Deserialize, Fallible, RawRelPtr, Serialize};
 
 #[derive(
     Clone,
@@ -31,6 +32,28 @@ impl From<i64> for Number {
     }
 }
 
+impl ArchiveWith<i64> for Number {
+    type Archived = rkyv::Archived<Number>;
+    type Resolver = rkyv::Resolver<Number>;
+
+    unsafe fn resolve_with(field: &i64, pos: usize, res: NumberResolver, out: *mut Self::Archived) {
+        Number::from(*field).resolve(pos, res, out);
+    }
+}
+
+impl<S: Fallible + ?Sized> SerializeWith<i64, S> for Number {
+    fn serialize_with(field: &i64, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        Number::from(*field).serialize(serializer)
+    }
+}
+
+impl<D: Fallible + ?Sized> DeserializeWith<Archived<Number>, i64, D> for Number {
+    fn deserialize_with(field: &Archived<Number>, deserializer: &mut D) -> Result<i64, D::Error> {
+        let n: Number = field.deserialize(deserializer)?;
+        Ok(i64::from(n))
+    }
+}
+
 #[derive(
     Clone,
     Copy,
@@ -58,6 +81,28 @@ impl From<bool> for Bool {
     fn from(b: bool) -> Bool {
         let n: u64 = if b { 1 } else { 0 };
         Self(n.to_le_bytes())
+    }
+}
+
+impl ArchiveWith<bool> for Bool {
+    type Archived = rkyv::Archived<Bool>;
+    type Resolver = rkyv::Resolver<Bool>;
+
+    unsafe fn resolve_with(field: &bool, pos: usize, res: BoolResolver, out: *mut Self::Archived) {
+        Bool::from(*field).resolve(pos, res, out);
+    }
+}
+
+impl<S: Fallible + ?Sized> SerializeWith<bool, S> for Bool {
+    fn serialize_with(field: &bool, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        Bool::from(*field).serialize(serializer)
+    }
+}
+
+impl<D: Fallible + ?Sized> DeserializeWith<Archived<Bool>, bool, D> for Bool {
+    fn deserialize_with(field: &Archived<Bool>, deserializer: &mut D) -> Result<bool, D::Error> {
+        let b: Bool = field.deserialize(deserializer)?;
+        Ok(bool::from(b))
     }
 }
 
