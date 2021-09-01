@@ -1,4 +1,5 @@
 use crate::lens::{ArchivedSchema, PrimitiveValue, Value};
+use rkyv::collections::ArchivedBTreeMap;
 use rkyv::string::ArchivedString;
 use rkyv::vec::ArchivedVec;
 use rkyv::with::{ArchiveWith, DeserializeWith, SerializeWith};
@@ -110,13 +111,46 @@ impl<D: Fallible + ?Sized> DeserializeWith<Archived<Bool>, bool, D> for Bool {
     }
 }
 
+pub fn key_offset(
+    key: &str,
+    m: &ArchivedBTreeMap<ArchivedString, ArchivedSchema>,
+) -> Option<usize> {
+    if !m.contains_key(key) {
+        return None;
+    }
+    let mut i = 0;
+    for (k, _) in m.iter() {
+        if k.as_str() == key {
+            break;
+        } else {
+            i += 8;
+        }
+    }
+    Some(i)
+}
+
+pub fn size_of(schema: &ArchivedSchema) -> usize {
+    if let ArchivedSchema::Object(m) = schema {
+        m.len() * 8
+    } else {
+        8
+    }
+}
+
 pub struct Ptr<'a> {
     ptr: *const u8,
     schema: &'a ArchivedSchema,
 }
 
 impl<'a> Ptr<'a> {
-    pub fn new(ptr: *const u8, schema: &'a ArchivedSchema) -> Self {
+    pub fn new(bytes: &'a [u8], schema: &'a ArchivedSchema) -> Self {
+        let pos = bytes.len() - size_of(schema);
+        let ptr = unsafe { (bytes as *const _ as *const u8).add(pos) };
+        Self { ptr, schema }
+    }
+
+    pub fn from_ref<T>(ptr: &'a T, schema: &'a ArchivedSchema) -> Self {
+        let ptr = ptr as *const _ as *const u8;
         Self { ptr, schema }
     }
 
@@ -154,23 +188,11 @@ impl<'a> Ptr<'a> {
 
     pub fn get(&self, key: &str) -> Option<Ptr<'a>> {
         if let ArchivedSchema::Object(m) = self.schema {
-            if !m.contains_key(key) {
-                return None;
-            }
-            let mut i = 0;
-            let mut schema = None;
-            for (k, s) in m.iter() {
-                if k.as_str() == key {
-                    schema = Some(s);
-                    break;
-                } else {
-                    i += 8;
-                }
-            }
-            let ptr = unsafe { self.ptr.add(i) };
+            let offset = key_offset(key, m)?;
+            let ptr = unsafe { self.ptr.add(offset) };
             return Some(Ptr {
                 ptr,
-                schema: schema.unwrap(),
+                schema: m.get(key).unwrap(),
             });
         }
         None

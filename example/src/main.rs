@@ -1,5 +1,5 @@
 use cambria::{ArchivedCambria, Cambria};
-use rkyv::{archived_root, Archived};
+use rkyv::archived_root;
 use rkyv::ser::serializers::AllocSerializer;
 use rkyv::ser::Serializer;
 
@@ -39,11 +39,7 @@ fn main() {
     let eggs = shopping.idx(1).unwrap();
     assert_eq!(eggs.string().unwrap(), "eggs");
 
-    let doc2 = Doc2::transform(
-        Doc::lenses(),
-        &bytes,
-        std::mem::size_of::<Archived<Doc>>(),
-    ).unwrap();
+    let doc2 = Doc2::transform(Doc::lenses(), &bytes).unwrap();
     println!("{:?}", doc);
     println!("{:?}", doc2);
 }

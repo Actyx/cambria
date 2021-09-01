@@ -15,10 +15,11 @@ pub trait ArchivedCambria {
 
     fn schema() -> &'static ArchivedSchema;
 
-    fn ptr<'a>(&'a self) -> Ptr<'a> {
-        Ptr::new(self as *const _ as *const u8, unsafe {
-            &*(Self::schema() as *const _)
-        })
+    fn ptr<'a>(&'a self) -> Ptr<'a>
+    where
+        Self: Sized,
+    {
+        Ptr::from_ref(self, unsafe { &*(Self::schema() as *const _) })
     }
 }
 
@@ -27,7 +28,7 @@ pub trait Cambria: FromValue {
 
     fn schema() -> &'static ArchivedSchema;
 
-    fn transform(lenses: &[u8], bytes: &[u8], len: usize) -> Result<Self>
+    fn transform(lenses: &[u8], bytes: &[u8]) -> Result<Self>
     where
         Self: Sized,
     {
@@ -35,9 +36,7 @@ pub trait Cambria: FromValue {
         let b = unsafe { archived_root::<Lenses>(Self::lenses()) };
         let sa = a.to_schema()?;
         let sa = unsafe { archived_root::<Schema>(&sa[..]) };
-        let pos = bytes.len() - len;
-        let ptr = unsafe { (bytes as *const _ as *const u8).add(pos) };
-        let mut value = Ptr::new(ptr, sa).to_value();
+        let mut value = Ptr::new(bytes, sa).to_value();
         for lens in a.transform(b) {
             lens.transform_value(&mut value);
         }
