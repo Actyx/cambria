@@ -1,5 +1,4 @@
-use cambria::{ArchivedCambria, Cambria};
-use rkyv::archived_root;
+use cambria::{Cambria, Ptr};
 use rkyv::ser::serializers::AllocSerializer;
 use rkyv::ser::Serializer;
 
@@ -20,7 +19,7 @@ fn main() {
     let mut ser = AllocSerializer::<256>::default();
     ser.serialize_value(&doc).unwrap();
     let bytes = ser.into_serializer().into_inner().to_vec();
-    let ptr = (unsafe { archived_root::<Doc>(&bytes[..]) }).ptr();
+    let ptr = Ptr::new(&bytes, Doc::schema());
 
     assert_eq!(
         ptr.keys().unwrap().collect::<Vec<_>>(),
