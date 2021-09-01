@@ -46,15 +46,12 @@ impl ArchivedPrimitiveValue {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Archive, Serialize)]
-#[archive_attr(derive(Debug, Eq, PartialEq))]
-#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[repr(C)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Value {
     Null,
     Primitive(PrimitiveValue),
-    Array(#[omit_bounds] Vec<Value>),
-    Object(#[omit_bounds] BTreeMap<Prop, Value>),
+    Array(Vec<Value>),
+    Object(BTreeMap<Prop, Value>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Archive, Serialize)]

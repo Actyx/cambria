@@ -1,7 +1,9 @@
-use crate::lens::ArchivedSchema;
+use crate::lens::{ArchivedSchema, PrimitiveValue, Value};
 use rkyv::string::ArchivedString;
+use rkyv::vec::ArchivedVec;
 use rkyv::with::{ArchiveWith, DeserializeWith, SerializeWith};
 use rkyv::{Archive, Archived, Deserialize, Fallible, RawRelPtr, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(
     Clone,
@@ -176,8 +178,8 @@ impl<'a> Ptr<'a> {
 
     pub fn len(&self) -> Option<usize> {
         if let ArchivedSchema::Array(_, _) = self.schema {
-            let rel_ptr = unsafe { *(self.ptr as *const u64) };
-            return Some((rel_ptr >> 32) as usize);
+            let array = unsafe { &*(self.ptr as *const ArchivedVec<u64>) };
+            return Some(array.as_ref().len());
         }
         None
     }
@@ -187,5 +189,35 @@ impl<'a> Ptr<'a> {
             return Some(m.keys().map(|k| k.as_str()));
         }
         None
+    }
+
+    pub fn to_value(&self) -> Value {
+        match self.schema {
+            ArchivedSchema::Null => Value::Null,
+            ArchivedSchema::Boolean => {
+                Value::Primitive(PrimitiveValue::Boolean(self.boolean().unwrap()))
+            }
+            ArchivedSchema::Number => {
+                Value::Primitive(PrimitiveValue::Number(self.number().unwrap()))
+            }
+            ArchivedSchema::Text => {
+                Value::Primitive(PrimitiveValue::Text(self.string().unwrap().to_string()))
+            }
+            ArchivedSchema::Array(_, _) => {
+                let len = self.len().unwrap();
+                let mut arr = Vec::with_capacity(len);
+                for i in 0..len {
+                    arr.push(self.idx(i).unwrap().to_value());
+                }
+                Value::Array(arr)
+            }
+            ArchivedSchema::Object(_) => {
+                let mut map = BTreeMap::new();
+                for key in self.keys().unwrap() {
+                    map.insert(key.to_string(), self.get(key).unwrap().to_value());
+                }
+                Value::Object(map)
+            }
+        }
     }
 }

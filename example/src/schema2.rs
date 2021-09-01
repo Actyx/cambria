@@ -17,7 +17,35 @@ pub struct Doc2 {
     #[with(cambria::Number)]
     pub xanswer: i64,
 }
-impl cambria::Cambria for ArchivedDoc2 {
+impl cambria::FromValue for Doc2 {
+    fn from_value(value: &cambria::Value) -> cambria::anyhow::Result<Self> {
+        if let cambria::Value::Object(obj) = value {
+            Ok(Self {
+                done: {
+                    let value = obj
+                        .get("done")
+                        .ok_or_else(|| cambria::anyhow::anyhow!("expected key done"))?;
+                    cambria::FromValue::from_value(&value)?
+                },
+                shopping_list: {
+                    let value = obj
+                        .get("shopping_list")
+                        .ok_or_else(|| cambria::anyhow::anyhow!("expected key shopping_list"))?;
+                    cambria::FromValue::from_value(&value)?
+                },
+                xanswer: {
+                    let value = obj
+                        .get("xanswer")
+                        .ok_or_else(|| cambria::anyhow::anyhow!("expected key xanswer"))?;
+                    cambria::FromValue::from_value(&value)?
+                },
+            })
+        } else {
+            Err(cambria::anyhow::anyhow!("expected object"))
+        }
+    }
+}
+impl cambria::ArchivedCambria for ArchivedDoc2 {
     fn lenses() -> &'static [u8] {
         use cambria::aligned::{Aligned, A8};
         static LENSES: Aligned<A8, [u8; 336usize]> = Aligned([
@@ -59,6 +87,16 @@ impl cambria::Cambria for ArchivedDoc2 {
             0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 5u8, 0u8, 0u8, 0u8, 3u8, 0u8, 0u8, 0u8,
             176u8, 255u8, 255u8, 255u8,
         ]);
-        unsafe { rkyv::archived_root::<cambria::Schema>(&SCHEMA[..]) }
+        unsafe { cambria::rkyv::archived_root::<cambria::Schema>(&SCHEMA[..]) }
+    }
+}
+impl cambria::Cambria for Doc2 {
+    fn lenses() -> &'static [u8] {
+        use cambria::ArchivedCambria;
+        ArchivedDoc2::lenses()
+    }
+    fn schema() -> &'static cambria::ArchivedSchema {
+        use cambria::ArchivedCambria;
+        ArchivedDoc2::schema()
     }
 }

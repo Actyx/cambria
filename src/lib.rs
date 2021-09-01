@@ -3,14 +3,14 @@ mod lens;
 mod precompile;
 
 pub use layout::{Bool, Number, Ptr};
-pub use lens::{ArchivedSchema, Kind, Lens, Lenses, PrimitiveKind, PrimitiveValue, Schema};
+pub use lens::{ArchivedSchema, Kind, Lens, Lenses, PrimitiveKind, PrimitiveValue, Schema, Value};
 pub use precompile::precompile;
-pub use {aligned, rkyv};
+pub use {aligned, anyhow, rkyv};
 
 use anyhow::Result;
 use rkyv::archived_root;
 
-pub trait Cambria {
+pub trait ArchivedCambria {
     fn lenses() -> &'static [u8];
 
     fn schema() -> &'static ArchivedSchema;
@@ -20,8 +20,14 @@ pub trait Cambria {
             &*(Self::schema() as *const _)
         })
     }
+}
 
-    fn transform(lenses: &[u8], bytes: &[u8]) -> Result<Self>
+pub trait Cambria: FromValue {
+    fn lenses() -> &'static [u8];
+
+    fn schema() -> &'static ArchivedSchema;
+
+    fn transform(lenses: &[u8], bytes: &[u8], len: usize) -> Result<Self>
     where
         Self: Sized,
     {
@@ -29,11 +35,72 @@ pub trait Cambria {
         let b = unsafe { archived_root::<Lenses>(Self::lenses()) };
         let sa = a.to_schema()?;
         let sa = unsafe { archived_root::<Schema>(&sa[..]) };
-        let pa = Ptr::new(bytes as *const _ as *const u8, sa);
-        //let mut me = Self::default();
+        let pos = bytes.len() - len;
+        let ptr = unsafe { (bytes as *const _ as *const u8).add(pos) };
+        let mut value = Ptr::new(ptr, sa).to_value();
         for lens in a.transform(b) {
-            //lens.transform_value(pa.ptr()
+            lens.transform_value(&mut value);
         }
-        todo!()
+        Self::from_value(&value)
+    }
+}
+
+pub trait FromValue {
+    fn from_value(value: &Value) -> Result<Self>
+    where
+        Self: Sized;
+}
+
+impl FromValue for () {
+    fn from_value(value: &Value) -> Result<Self> {
+        if let Value::Null = value {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("expected null"))
+        }
+    }
+}
+
+impl FromValue for bool {
+    fn from_value(value: &Value) -> Result<Self> {
+        if let Value::Primitive(PrimitiveValue::Boolean(b)) = value {
+            Ok(*b)
+        } else {
+            Err(anyhow::anyhow!("expected boolean"))
+        }
+    }
+}
+
+impl FromValue for i64 {
+    fn from_value(value: &Value) -> Result<Self> {
+        if let Value::Primitive(PrimitiveValue::Number(n)) = value {
+            Ok(*n)
+        } else {
+            Err(anyhow::anyhow!("expected number"))
+        }
+    }
+}
+
+impl FromValue for String {
+    fn from_value(value: &Value) -> Result<Self> {
+        if let Value::Primitive(PrimitiveValue::Text(s)) = value {
+            Ok(s.clone())
+        } else {
+            Err(anyhow::anyhow!("expected text"))
+        }
+    }
+}
+
+impl<T: FromValue> FromValue for Vec<T> {
+    fn from_value(value: &Value) -> Result<Self> {
+        if let Value::Array(a) = value {
+            let mut arr = Vec::with_capacity(a.len());
+            for v in a {
+                arr.push(T::from_value(v)?);
+            }
+            Ok(arr)
+        } else {
+            Err(anyhow::anyhow!("expected array"))
+        }
     }
 }
