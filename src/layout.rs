@@ -206,6 +206,10 @@ impl<'a> Ptr<'a> {
         None
     }
 
+    pub fn is_empty(&self) -> Option<bool> {
+        self.len().map(|len| len == 0)
+    }
+
     pub fn keys(&self) -> Option<impl Iterator<Item = &str>> {
         if let ArchivedSchema::Object(m) = self.schema {
             return Some(m.keys().map(|k| k.as_str()));
