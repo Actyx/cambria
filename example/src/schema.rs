@@ -25,19 +25,19 @@ impl cambria::FromValue for Doc {
                     let value = obj
                         .get("done")
                         .ok_or_else(|| cambria::anyhow::anyhow!("expected key done"))?;
-                    cambria::FromValue::from_value(&value)?
+                    cambria::FromValue::from_value(value)?
                 },
                 shopping: {
                     let value = obj
                         .get("shopping")
                         .ok_or_else(|| cambria::anyhow::anyhow!("expected key shopping"))?;
-                    cambria::FromValue::from_value(&value)?
+                    cambria::FromValue::from_value(value)?
                 },
                 xanswer: {
                     let value = obj
                         .get("xanswer")
                         .ok_or_else(|| cambria::anyhow::anyhow!("expected key xanswer"))?;
-                    cambria::FromValue::from_value(&value)?
+                    cambria::FromValue::from_value(value)?
                 },
             })
         } else {

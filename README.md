@@ -46,12 +46,11 @@ use schema::Doc;
 use schema2::Doc2;
 
 fn main() {
-    let mut doc = Doc::default();
-    doc.done = true.into();
-    doc.xanswer = 42.into();
-    doc.shopping.push("cheese".into());
-    doc.shopping.push("eggs".into());
-    doc.shopping.push("milk".into());
+    let doc = Doc {
+        done: true,
+        xanswer: 42,
+        shopping: vec!["cheese".into(), "eggs".into(), "milk".into()],
+    };
 
     let mut ser = AllocSerializer::<256>::default();
     ser.serialize_value(&doc).unwrap();
@@ -63,7 +62,7 @@ fn main() {
         vec!["done", "shopping", "xanswer"]
     );
     let done = ptr.get("done").unwrap().boolean().unwrap();
-    assert_eq!(done, true);
+    assert!(true);
 
     let answer = ptr.get("xanswer").unwrap().number().unwrap();
     assert_eq!(answer, 42);

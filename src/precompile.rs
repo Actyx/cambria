@@ -121,7 +121,7 @@ fn precompile_schema(key: &str, schema: &ArchivedSchema) -> PrecompiledSchema {
                         let value = obj
                             .get(#key_str)
                             .ok_or_else(|| cambria::anyhow::anyhow!(#err_str))?;
-                        cambria::FromValue::from_value(&value)?
+                        cambria::FromValue::from_value(value)?
                     },
                 });
             }

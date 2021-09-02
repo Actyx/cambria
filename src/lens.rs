@@ -132,7 +132,7 @@ pub enum Lens {
 }
 
 impl ArchivedLens {
-    fn to_ref<'a>(&'a self) -> LensRef<'a> {
+    fn to_ref(&self) -> LensRef<'_> {
         match self {
             Self::Make(k) => LensRef::Make(*k),
             Self::Destroy(k) => LensRef::Destroy(*k),
@@ -306,20 +306,20 @@ impl<'a> LensRef<'a> {
             (Self::LensMap(rev, lens), Schema::Array(_, s)) => {
                 lens.to_ref().maybe_reverse(*rev).transform_schema(s)?
             }
-            (Self::Convert(rev, a, b, m), s) => {
-                for (va, vb) in m.as_ref() {
-                    if va.kind_of() != *a || vb.kind_of() != *b {
+            (Self::Convert(rev, from, to, map), s) => {
+                for (va, vb) in map.iter() {
+                    if va.kind_of() != *from || vb.kind_of() != *to {
                         return Err(anyhow::anyhow!("invalid map"));
                     }
                 }
-                let (a, b) = if *rev { (b, a) } else { (a, b) };
-                match (a, &s) {
+                let (from, to) = if *rev { (to, from) } else { (from, to) };
+                match (from, &s) {
                     (PrimitiveKind::Boolean, Schema::Boolean) => {}
                     (PrimitiveKind::Number, Schema::Number) => {}
                     (PrimitiveKind::Text, Schema::Text) => {}
                     _ => return Err(anyhow!("kind doesn't match schema")),
                 }
-                *s = match b {
+                *s = match to {
                     PrimitiveKind::Boolean => Schema::Boolean,
                     PrimitiveKind::Number => Schema::Number,
                     PrimitiveKind::Text => Schema::Text,
@@ -398,14 +398,14 @@ impl<'a> LensRef<'a> {
                     lens.to_ref().maybe_reverse(*rev).transform_value(v);
                 }
             }
-            (Self::Convert(rev, a, b, m), Value::Primitive(p)) => {
-                for (k, v) in m.as_ref() {
+            (Self::Convert(rev, from, to, map), Value::Primitive(p)) => {
+                for (k, v) in map.iter() {
                     if k == p {
                         *p = v.deserialize(&mut Infallible).unwrap();
                         break;
                     }
                 }
-                let k = if *rev { b } else { a };
+                let k = if *rev { to } else { from };
                 *p = match k {
                     PrimitiveKind::Boolean => PrimitiveValue::Boolean(false),
                     PrimitiveKind::Number => PrimitiveValue::Number(0),

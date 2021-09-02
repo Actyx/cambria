@@ -15,7 +15,7 @@ pub trait ArchivedCambria {
 
     fn schema() -> &'static ArchivedSchema;
 
-    fn ptr<'a>(&'a self) -> Ptr<'a>
+    fn ptr(&self) -> Ptr<'_>
     where
         Self: Sized,
     {
