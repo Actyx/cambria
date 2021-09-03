@@ -3,6 +3,8 @@
 Use lenses to maintain forwards and backwards compatibility with your software. Cambria minimizes
 allocations using `rkyv` for zero copy deserialization and is formally verified with idris.
 
+Inspired by [https://www.inkandswitch.com/cambria.html](https://www.inkandswitch.com/cambria.html).
+
 ## Getting started
 
 Add your lenses to your `build.rs` file.
