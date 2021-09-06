@@ -1,6 +1,8 @@
 mod layout;
 mod lens;
 mod precompile;
+#[cfg(test)]
+pub mod test;
 
 pub use layout::{Bool, Number, Ptr};
 pub use lens::{ArchivedSchema, Kind, Lens, Lenses, PrimitiveKind, PrimitiveValue, Schema, Value};

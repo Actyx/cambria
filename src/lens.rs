@@ -67,7 +67,7 @@ pub enum Schema {
     Object(#[omit_bounds] BTreeMap<Prop, Schema>),
 }
 
-impl Schema {
+impl ArchivedSchema {
     pub fn validate(&self, v: &Value) -> bool {
         match (self, v) {
             (Self::Null, Value::Null) => true,
@@ -88,12 +88,12 @@ impl Schema {
             }
             (Self::Object(sm), Value::Object(vm)) => {
                 for k in sm.keys() {
-                    if !vm.contains_key(k) {
+                    if !vm.contains_key(k.as_str()) {
                         return false;
                     }
                 }
                 for (k, v) in vm {
-                    if let Some(s) = sm.get(k) {
+                    if let Some(s) = sm.get(k.as_str()) {
                         if !s.validate(v) {
                             return false;
                         }
@@ -132,7 +132,7 @@ pub enum Lens {
 }
 
 impl ArchivedLens {
-    fn to_ref(&self) -> LensRef<'_> {
+    pub fn to_ref(&self) -> LensRef<'_> {
         match self {
             Self::Make(k) => LensRef::Make(*k),
             Self::Destroy(k) => LensRef::Destroy(*k),
@@ -436,7 +436,8 @@ impl ArchivedLenses {
             lens.to_ref().transform_schema(&mut schema)?;
         }
         let mut ser = AllocSerializer::<256>::default();
-        ser.serialize_value(&schema).unwrap();
+        ser.serialize_value(&schema)
+            .map_err(|err| anyhow::anyhow!("{}", err))?;
         let bytes = ser.into_serializer().into_inner().to_vec();
         Ok(bytes)
     }
